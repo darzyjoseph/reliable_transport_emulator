@@ -120,7 +120,7 @@ void A_input(struct pkt packet)
           restart_emulator_timer();
         }
     }
-    
+
   else 
     if (TRACE > 0)
       printf ("----A: corrupted ACK is received, do nothing!\n");
@@ -134,15 +134,16 @@ void A_timerinterrupt(void)
   if (TRACE > 0)
     printf("----A: time out,resend packets!\n");
 
-  for(i=0; i<windowcount; i++) {
-
-    if (TRACE > 0)
-      printf ("---A: resending packet %d\n", (buffer[(windowfirst+i) % WINDOWSIZE]).seqnum);
-
-    tolayer3(A,buffer[(windowfirst+i) % WINDOWSIZE]);
-    packets_resent++;
-    if (i==0) starttimer(A,RTT);
+  // scan all in‐flight packets and retransmit any whose logical timer expired
+  double now = get_current_time();
+  for (int i = send_base; i < A_nextseqnum; i++) {
+    if (!acked[i] && now - timer_start[i] >= RTT) {
+      tolayer3(A, sndpkt[i]);
+      timer_start[i] = now;
+    }
   }
+  // then restart emulator timer for next expiry
+  restart_emulator_timer();
 }       
 
 
