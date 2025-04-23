@@ -49,11 +49,11 @@ bool IsCorrupted(struct pkt packet)
 
 
 /********* Sender (A) variables and functions ************/
-
-static struct pkt buffer[WINDOWSIZE];  /* array for storing packets waiting for ACK */
-static int windowfirst, windowlast;    /* array indexes of the first/last packet awaiting ACK */
-static int windowcount;                /* the number of packets currently awaiting an ACK */
-static int A_nextseqnum;               /* the next sequence number to be used by the sender */
+static int send_base;                   /* oldest un‐ACKed seq number */
+static int A_nextseqnum;                /* the next sequence number to be used by the sender */
+static struct pkt sndpkt[SEQSPACE];      // buffered packets
+static bool acked[SEQSPACE];            /* which seq numbers have been ACKed */
+static double timer_start[SEQSPACE];    /* logical timers start times */
 
 /* called from layer 5 (application layer), passed the message to be sent to other side */
 void A_output(struct msg message)
@@ -61,8 +61,8 @@ void A_output(struct msg message)
   struct pkt sendpkt;
   int i;
 
-  /* if not blocked waiting on ACK */
-  if ( windowcount < WINDOWSIZE) {
+  /* allow send if nextseqnum < send_base + WINDOWSIZE */
+  if ( A_nextseqnum < send_base + WINDOWSIZE ) {
     if (TRACE > 1)
       printf("----A: New message arrives, send window is not full, send new messge to layer3!\n");
 
@@ -73,20 +73,18 @@ void A_output(struct msg message)
       sendpkt.payload[i] = message.data[i];
     sendpkt.checksum = ComputeChecksum(sendpkt); 
 
-    /* put packet in window buffer */
-    /* windowlast will always be 0 for alternating bit; but not for GoBackN */
-    windowlast = (windowlast + 1) % WINDOWSIZE; 
-    buffer[windowlast] = sendpkt;
-    windowcount++;
+    /* buffer this packet by its sequence number */
+    sndpkt[A_nextseqnum] = sendpkt;
+    acked[A_nextseqnum] = false;
 
     /* send out packet */
     if (TRACE > 0)
       printf("Sending packet %d to layer 3\n", sendpkt.seqnum);
     tolayer3 (A, sendpkt);
 
-    /* start timer if first packet in window */
-    if (windowcount == 1)
-      starttimer(A,RTT);
+    /* start to track per-packet timeouts */
+    timer_start[A_nextseqnum] = get_current_time();
+    restart_emulator_timer(); 
 
     /* get next sequence number, wrap back to 0 */
     A_nextseqnum = (A_nextseqnum + 1) % SEQSPACE;  
@@ -181,14 +179,10 @@ void A_timerinterrupt(void)
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void)
 {
-  /* initialise A's window, buffer and sequence number */
-  A_nextseqnum = 0;  /* A starts with seq num 0, do not change this */
-  windowfirst = 0;
-  windowlast = -1;   /* windowlast is where the last packet sent is stored.  
-		     new packets are placed in winlast + 1 
-		     so initially this is set to -1
-		   */
-  windowcount = 0;
+    send_base = 0;
+    A_nextseqnum = 0;
+    for (int i = 0; i < SEQSPACE; i++)
+      acked[i] = false;
 }
 
 
