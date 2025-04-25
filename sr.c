@@ -134,7 +134,7 @@ void A_timerinterrupt(void)
   if (TRACE > 0)
     printf("----A: time out,resend packets!\n");
 
-  // scan all in‐flight packets and retransmit any whose logical timer expired
+  // scan all in‐flight packets and retransmit any whose timer expired
   double now = get_current_time();
   for (int i = send_base; i < A_nextseqnum; i++) {
     if (!acked[i] && now - timer_start[i] >= RTT) {
@@ -164,6 +164,10 @@ void A_init(void)
 
 static int expectedseqnum; /* the sequence number expected next by the receiver */
 static int B_nextseqnum;   /* the sequence number for the next packets sent by B */
+
+static int rcv_base;                 /* lowest in‐order seq# not yet delivered */
+static struct pkt rcvpkt[SEQSPACE];  /* buffer for out‐of‐order arrivals */
+static bool received[SEQSPACE];      /* seq numers that have arrived */
 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
