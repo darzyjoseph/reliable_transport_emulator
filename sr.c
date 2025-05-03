@@ -193,8 +193,12 @@ void A_init(void)
 
 /********* Receiver (B)  variables and procedures ************/
 
-static int expectedseqnum; /* the sequence number expected next by the receiver */
-static int B_nextseqnum;   /* the sequence number for the next packets sent by B */
+/********* Receiver (B)  variables and procedures ************/
+
+static struct pkt recvbuf[WINDOWSIZE];
+static bool recvOK[WINDOWSIZE];
+static int recvbase;
+static int B_nextseqnum;
 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
@@ -203,52 +207,64 @@ void B_input(struct pkt packet)
   struct pkt sendpkt;
   int i;
 
+  bool corrupt = IsCorrupted(packet);
+  int dist = (packet.seqnum - recvbase + SEQSPACE) % SEQSPACE;
+  bool inWindow = (!corrupt && dist < WINDOWSIZE);
+
   /* if not corrupted and received packet is in order */
-  if  ( (!IsCorrupted(packet))  && (packet.seqnum == expectedseqnum) ) {
+  if (inWindow) {
+    if (!recvOK[dist]) {
+        /* buffer new in-window packet */
+        recvbuf[dist] = packet;
+        recvOK[dist]  = true;
+    }
+    /* original trace for correct receipt */
     if (TRACE > 0)
-      printf("----B: packet %d is correctly received, send ACK!\n",packet.seqnum);
+        printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
     packets_received++;
-
-    /* deliver to receiving application */
-    tolayer5(B, packet.payload);
-
-    /* send an ACK for the received packet */
-    sendpkt.acknum = expectedseqnum;
-
-    /* update state variables */
-    expectedseqnum = (expectedseqnum + 1) % SEQSPACE;        
-  }
-  else {
-    /* packet is corrupted or out of order resend last ACK */
-    if (TRACE > 0) 
-      printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
-    if (expectedseqnum == 0)
-      sendpkt.acknum = SEQSPACE - 1;
-    else
-      sendpkt.acknum = expectedseqnum - 1;
+    sendpkt.acknum = packet.seqnum;
+  } else {
+      /* corrupted or out-of-window */
+      if (TRACE > 0)
+          printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
+      /* ACK last in-order */
+      int last = (recvbase == 0 ? SEQSPACE - 1 : recvbase - 1);
+      sendpkt.acknum = last;
   }
 
-  /* create packet */
+  /* deliver any in-order packets */
+  while (recvOK[0]) {
+      tolayer5(B, recvbuf[0].payload);
+      /* shift buffer */
+      for (i = 0; i < WINDOWSIZE - 1; i++) {
+          recvbuf[i] = recvbuf[i + 1];
+          recvOK[i]  = recvOK[i + 1];
+      }
+      recvOK[WINDOWSIZE - 1] = false;
+      recvbase = (recvbase + 1) % SEQSPACE;
+  }
+
+  /* finish ACK packet and send */
   sendpkt.seqnum = B_nextseqnum;
-  B_nextseqnum = (B_nextseqnum + 1) % 2;
-    
-  /* we don't have any data to send.  fill payload with 0's */
-  for ( i=0; i<20 ; i++ ) 
-    sendpkt.payload[i] = '0';  
+  B_nextseqnum   = (B_nextseqnum + 1) % 2;
+  for (i = 0; i < 20; i++)
+      sendpkt.payload[i] = '0';
+  sendpkt.checksum = ComputeChecksum(sendpkt);
+  tolayer3(B, sendpkt);
 
-  /* computer checksum */
-  sendpkt.checksum = ComputeChecksum(sendpkt); 
-
-  /* send out packet */
-  tolayer3 (B, sendpkt);
 }
+
 
 /* the following routine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
-void B_init(void)
-{
-  expectedseqnum = 0;
+void B_init(void) {
+
+  recvbase = 0;
   B_nextseqnum = 1;
+
+  for (int i = 0; i < WINDOWSIZE; i++)
+      recvOK[i] = false;
+
 }
 
 /******************************************************************************
