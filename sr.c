@@ -105,8 +105,9 @@ void A_output(struct msg message)
 */
 void A_input(struct pkt packet)
 {
-  int ackcount = 0;
-  int i;
+
+  int dist;
+  int idx;
 
   /* if received ACK is not corrupted */ 
   if (!IsCorrupted(packet)) {
@@ -127,8 +128,8 @@ void A_input(struct pkt packet)
           new_ACKs++;
 
           /* locate buffer index */
-          int dist = (packet.acknum - seqfirst + SEQSPACE) % SEQSPACE;
-          int idx = (windowfirst + dist) % WINDOWSIZE;
+          dist = (packet.acknum - seqfirst + SEQSPACE) % SEQSPACE;
+          idx = (windowfirst + dist) % WINDOWSIZE;
           if (!acked[idx]) {
               acked[idx] = true;
               windowcount--;
@@ -159,13 +160,14 @@ void A_input(struct pkt packet)
 /* called when A's timer goes off */
 void A_timerinterrupt(void) 
 {
-  if (TRACE > 0)
-      printf("----A: time out,resend packets!\n");
 
   if (TRACE > 0)
-      printf("---A: resending packet %d\n", buffer[windowfirst].seqnum);
+    printf("----A: time out,resend packets!\n");
+
+  if (TRACE > 0)
+    printf("---A: resending packet %d\n", buffer[windowfirst].seqnum);
   
-      tolayer3(A,buffer[windowfirst]);
+  tolayer3(A,buffer[windowfirst]);
   packets_resent++;
   starttimer(A,RTT);
 
@@ -175,6 +177,9 @@ void A_timerinterrupt(void)
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void)
 {
+
+  int i;
+
   /* initialise A's window, buffer and sequence number */
   A_nextseqnum = 0;  /* A starts with seq num 0, do not change this */
   windowfirst = 0;
@@ -184,7 +189,6 @@ void A_init(void)
 		   */
   windowcount = 0;
 
-  int i;
   for (i = 0; i < WINDOWSIZE; i++) 
     acked[i] = false;
 
@@ -206,6 +210,7 @@ void B_input(struct pkt packet)
 {
   struct pkt sendpkt;
   int i;
+  int last;
 
   bool corrupt = IsCorrupted(packet);
   int dist = (packet.seqnum - recvbase + SEQSPACE) % SEQSPACE;
@@ -228,7 +233,7 @@ void B_input(struct pkt packet)
       if (TRACE > 0)
           printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
       /* ACK last in-order */
-      int last = (recvbase == 0 ? SEQSPACE - 1 : recvbase - 1);
+      last = (recvbase == 0 ? SEQSPACE - 1 : recvbase - 1);
       sendpkt.acknum = last;
   }
 
@@ -259,10 +264,12 @@ void B_input(struct pkt packet)
 /* entity B routines are called. You can use it to do any initialization */
 void B_init(void) {
 
+  int i;
+
   recvbase = 0;
   B_nextseqnum = 1;
 
-  for (int i = 0; i < WINDOWSIZE; i++)
+  for (i = 0; i < WINDOWSIZE; i++)
       recvOK[i] = false;
 
 }
