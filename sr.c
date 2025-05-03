@@ -47,7 +47,6 @@ bool IsCorrupted(struct pkt packet)
     return (true);
 }
 
-
 /********* Sender (A) variables and functions ************/
 
 static struct pkt buffer[WINDOWSIZE];  /* array for storing packets waiting for ACK */
