@@ -217,7 +217,6 @@ void B_input(struct pkt packet)
   corrupt = IsCorrupted(packet);
   dist = (packet.seqnum - recvbase + SEQSPACE) % SEQSPACE;
   if (!corrupt) {
-    packets_received++;
       if (dist < WINDOWSIZE) {
           if (!recvOK[dist]) {
               recvOK[dist] = true;
@@ -226,12 +225,14 @@ void B_input(struct pkt packet)
           if (TRACE > 0) {
               printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
           }
+          packets_received++;
           sendpkt.acknum = packet.seqnum;
       } else {
           /* duplicate of already delivered */
           if (TRACE > 0) {
               printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
           }
+          packets_received++;
           sendpkt.acknum = packet.seqnum;
       }
   } else {
