@@ -232,6 +232,7 @@ void B_input(struct pkt packet)
           if (TRACE > 0) {
               printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
           }
+          packets_received++;
           sendpkt.acknum = packet.seqnum;
       }
   } else {
