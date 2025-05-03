@@ -47,7 +47,6 @@ bool IsCorrupted(struct pkt packet)
     return (true);
 }
 
-
 /********* Sender (A) variables and functions ************/
 static int send_base;                   /* oldest un‐ACKed seq number */
 static int A_nextseqnum;                /* the next sequence number to be used by the sender */
