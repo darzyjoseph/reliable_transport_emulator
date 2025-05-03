@@ -209,42 +209,32 @@ static int B_nextseqnum;
 void B_input(struct pkt packet)
  {
   struct pkt sendpkt;
-  bool corrupt;
   int dist;
   int i;
   int last;
 
-  corrupt = IsCorrupted(packet);
+  if (IsCorrupted(packet)) {
+    return;
+  }
+
   dist = (packet.seqnum - recvbase + SEQSPACE) % SEQSPACE;
-  if (!corrupt) {
-      if (dist < WINDOWSIZE) {
-          if (!recvOK[dist]) {
-              recvOK[dist] = true;
-              recvbuf[dist] = packet;
-          }
-          if (TRACE > 0) {
-              printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
-          }
-          packets_received++;
-          sendpkt.acknum = packet.seqnum;
-      } else {
-          /* duplicate of already delivered */
-          if (TRACE > 0) {
-              printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
-          }
-          packets_received++;
-          sendpkt.acknum = packet.seqnum;
-      }
+  if (dist < WINDOWSIZE) {
+    if (!recvOK[dist]) {
+      recvOK[dist] = true;
+      recvbuf[dist] = packet;
+    }
+    if (TRACE > 0)
+      printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
+    packets_received++;
+    sendpkt.acknum = packet.seqnum;
   } else {
-      if (TRACE > 0) {
-          printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
-      }
-      if (recvbase == 0) {
-          last = SEQSPACE - 1;
-      } else {
-          last = recvbase - 1;
-      }
-      sendpkt.acknum = last;
+
+    if (TRACE > 0)
+      printf("----B: packet %d out of window, resending last ACK\n", packet.seqnum);
+    packets_received++;
+
+    int last = (recvbase == 0 ? SEQSPACE-1 : recvbase-1);
+    sendpkt.acknum = last;
   }
 
   /* Deliver any in-order packets */
