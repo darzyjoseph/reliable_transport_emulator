@@ -162,9 +162,6 @@ void A_init(void)
 
 /********* Receiver (B)  variables and procedures ************/
 
-static int expectedseqnum; /* the sequence number expected next by the receiver */
-static int B_nextseqnum;   /* the sequence number for the next packets sent by B */
-
 static int rcv_base;                 /* lowest in‐order seq# not yet delivered */
 static struct pkt rcvpkt[SEQSPACE];  /* buffer for out‐of‐order arrivals */
 static bool received[SEQSPACE];      /* seq numers that have arrived */
@@ -177,51 +174,48 @@ void B_input(struct pkt packet)
   int i;
 
   /* if not corrupted and received packet is in order */
-  if  ( (!IsCorrupted(packet))  && (packet.seqnum == expectedseqnum) ) {
-    if (TRACE > 0)
-      printf("----B: packet %d is correctly received, send ACK!\n",packet.seqnum);
-    packets_received++;
-
-    /* deliver to receiving application */
-    tolayer5(B, packet.payload);
-
-    /* send an ACK for the received packet */
-    sendpkt.acknum = expectedseqnum;
-
-    /* update state variables */
-    expectedseqnum = (expectedseqnum + 1) % SEQSPACE;        
-  }
-  else {
-    /* packet is corrupted or out of order resend last ACK */
-    if (TRACE > 0) 
-      printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
-    if (expectedseqnum == 0)
-      sendpkt.acknum = SEQSPACE - 1;
-    else
-      sendpkt.acknum = expectedseqnum - 1;
-  }
-
-  /* create packet */
-  sendpkt.seqnum = B_nextseqnum;
-  B_nextseqnum = (B_nextseqnum + 1) % 2;
+    if (!IsCorrupted(packet)) {
+        int n = packet.seqnum;
+        /* Case 1: within receive window [rcv_base, rcv_base+WINDOWSIZE-1] */
+        if (n >= rcv_base && n < rcv_base + WINDOWSIZE) {
+          // send selective ACK */
+          struct pkt ackpkt = { .seqnum=0, .acknum=n };
+          memset(ackpkt.payload, 0, sizeof ackpkt.payload);
+          ackpkt.checksum = ComputeChecksum(ackpkt);
+          tolayer3(B, ackpkt);
     
-  /* we don't have any data to send.  fill payload with 0's */
-  for ( i=0; i<20 ; i++ ) 
-    sendpkt.payload[i] = '0';  
-
-  /* computer checksum */
-  sendpkt.checksum = ComputeChecksum(sendpkt); 
-
-  /* send out packet */
-  tolayer3 (B, sendpkt);
+          /* buffer if first time */
+          if (!received[n]) {
+            received[n] = true;
+            rcvpkt[n] = packet;
+          }
+          /* deliver any in‐order buffered packets */
+          while (received[rcv_base]) {
+            tolayer5(B, rcvpkt[rcv_base].payload);
+            received[rcv_base] = false;
+            rcv_base++;
+          }
+        }
+        /* already delivered but still in [rcv_base-WINDOWSIZE, rcv_base-1] */
+        else if (n >= rcv_base - WINDOWSIZE && n < rcv_base) {
+          /* re‐ACK so sender can slide forward */
+          struct pkt ackpkt = { .seqnum=0, .acknum=n };
+          memset(ackpkt.payload, 0, sizeof ackpkt.payload);
+          ackpkt.checksum = ComputeChecksum(ackpkt);
+          tolayer3(B, ackpkt);
+        }
+        /* otherwise ignore */
+      }
 }
 
 /* the following routine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
 void B_init(void)
 {
-  expectedseqnum = 0;
-  B_nextseqnum = 1;
+
+  rcv_base = 0;
+  for(int i = 0; i < SEQSPACE; i++)
+    received[i] = false;
 }
 
 /******************************************************************************
