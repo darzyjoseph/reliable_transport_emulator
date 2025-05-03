@@ -206,57 +206,60 @@ static int B_nextseqnum;
 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
-void B_input(struct pkt packet)
- {
+void B_input(struct pkt packet) {
+  
   struct pkt sendpkt;
   int dist;
   int i;
   int last;
 
+  /* silently drop corrupted packets */
   if (IsCorrupted(packet)) {
-    return;
+      return;
   }
 
+  /* compute offset from recvbase */
   dist = (packet.seqnum - recvbase + SEQSPACE) % SEQSPACE;
+
   if (dist < WINDOWSIZE) {
-    if (!recvOK[dist]) {
-      recvOK[dist] = true;
-      recvbuf[dist] = packet;
-    }
-    if (TRACE > 0)
-      printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
-    packets_received++;
-    sendpkt.acknum = packet.seqnum;
+      /* in-window first time - buffer it */
+      if (!recvOK[dist]) {
+          recvOK[dist] = true;
+          recvbuf[dist] = packet;
+      }
+      if (TRACE > 0)
+          printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
+      packets_received++;
+      sendpkt.acknum = packet.seqnum;
   } else {
-
-    if (TRACE > 0)
-      printf("----B: packet %d out of window, resending last ACK\n", packet.seqnum);
-    packets_received++;
-
-    int last = (recvbase == 0 ? SEQSPACE-1 : recvbase-1);
-    sendpkt.acknum = last;
+      /* uncorrupted but out of window: re-ACK last in-order */
+      if (TRACE > 0)
+          printf("----B: packet %d out of window, resending last ACK\n", packet.seqnum);
+      packets_received++;
+      last = (recvbase == 0 ? SEQSPACE-1 : recvbase-1);
+      sendpkt.acknum = last;
   }
 
-  /* Deliver any in-order packets */
+  /* deliver any in-order payloads up to upper layer */
   while (recvOK[0]) {
       tolayer5(B, recvbuf[0].payload);
       for (i = 0; i < WINDOWSIZE - 1; i++) {
-          recvbuf[i] = recvbuf[i+1];
-          recvOK[i] = recvOK[i+1];
+          recvbuf[i]   = recvbuf[i+1];
+          recvOK[i]    = recvOK[i+1];
       }
       recvOK[WINDOWSIZE-1] = false;
       recvbase = (recvbase + 1) % SEQSPACE;
   }
 
-  /* Send ACK */
-  sendpkt.seqnum = B_nextseqnum;
-  B_nextseqnum = (B_nextseqnum + 1) % 2;
-  for (i = 0; i < 20; i++) {
+  /* build & send the ACK packet */
+  sendpkt.seqnum  = B_nextseqnum;
+  B_nextseqnum    = (B_nextseqnum + 1) % 2;
+  for (i = 0; i < 20; i++)
       sendpkt.payload[i] = '0';
-  }
   sendpkt.checksum = ComputeChecksum(sendpkt);
   tolayer3(B, sendpkt);
 }
+
 
 
 /* the following routine will be called once (only) before any other */
