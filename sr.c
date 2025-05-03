@@ -157,25 +157,19 @@ void A_input(struct pkt packet)
 }
 
 /* called when A's timer goes off */
-void A_timerinterrupt(void)
+void A_timerinterrupt(void) 
 {
-  int i;
+  if (TRACE > 0)
+      printf("----A: time out,resend packets!\n");
 
   if (TRACE > 0)
-    printf("----A: time out,resend packets!\n");
+      printf("---A: resending packet %d\n", buffer[windowfirst].seqnum);
+  
+      tolayer3(A,buffer[windowfirst]);
+  packets_resent++;
+  starttimer(A,RTT);
 
-  for(i=0; i<windowcount; i++) {
-
-    if (TRACE > 0)
-      printf ("---A: resending packet %d\n", (buffer[(windowfirst+i) % WINDOWSIZE]).seqnum);
-
-    tolayer3(A,buffer[(windowfirst+i) % WINDOWSIZE]);
-    packets_resent++;
-    if (i==0) starttimer(A,RTT);
-  }
-}       
-
-
+}         
 
 /* the following routine will be called once (only) before any other */
 /* entity A routines are called. You can use it to do any initialization */
@@ -195,7 +189,6 @@ void A_init(void)
     acked[i] = false;
 
 }
-
 
 
 /********* Receiver (B)  variables and procedures ************/
