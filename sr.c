@@ -105,56 +105,62 @@ void A_output(struct msg message)
 */
 void A_input(struct pkt packet)
 {
+    int dist;
+    int idx;
+    bool is_oldest;
 
-  int dist;
-  int idx;
+    /* if received ACK is not corrupted */
+    if (!IsCorrupted(packet)) {
+        if (TRACE > 0)
+            printf("----A: uncorrupted ACK %d is received\n", packet.acknum);
+        total_ACKs_received++;
 
-  /* if received ACK is not corrupted */ 
-  if (!IsCorrupted(packet)) {
-    if (TRACE > 0)
-        printf("----A: uncorrupted ACK %d is received\n", packet.acknum);
-    total_ACKs_received++;
+        /* check if new ACK or duplicate */
+        if (windowcount != 0) {
+            int seqfirst = buffer[windowfirst].seqnum;
+            int seqlast  = buffer[windowlast].seqnum;
+            /* check if ACK within current window */
+            if (((seqfirst <= seqlast) && (packet.acknum >= seqfirst && packet.acknum <= seqlast)) ||
+                ((seqfirst > seqlast) && (packet.acknum >= seqfirst || packet.acknum <= seqlast))) {
 
-    /* check if new ACK or duplicate */
-    if (windowcount != 0) {
-      int seqfirst = buffer[windowfirst].seqnum;
-      int seqlast = buffer[windowlast].seqnum;
-      /* check if ACK within current window */
-      if (((seqfirst <= seqlast) && (packet.acknum >= seqfirst && packet.acknum <= seqlast)) ||
-          ((seqfirst > seqlast) && (packet.acknum >= seqfirst || packet.acknum <= seqlast))) {
+                if (TRACE > 0)
+                    printf("----A: ACK %d is not a duplicate\n", packet.acknum);
+                new_ACKs++;
 
-          if (TRACE > 0)
-              printf("----A: ACK %d is not a duplicate\n", packet.acknum);
-          new_ACKs++;
+                /* determine if this ACK is for the oldest outstanding packet */
+                is_oldest = (packet.acknum == seqfirst);
 
-          /* locate buffer index */
-          dist = (packet.acknum - seqfirst + SEQSPACE) % SEQSPACE;
-          idx = (windowfirst + dist) % WINDOWSIZE;
-          if (!acked[idx]) {
-              acked[idx] = true;
-              windowcount--;
-          }
+                /* locate buffer index and mark ACKed */
+                dist = (packet.acknum - seqfirst + SEQSPACE) % SEQSPACE;
+                idx  = (windowfirst + dist) % WINDOWSIZE;
+                if (!acked[idx]) {
+                    acked[idx] = true;
+                    windowcount--;
+                }
 
-          /* slide window over all leading ACKed */
-          while (acked[windowfirst]) {
-              acked[windowfirst] = false;
-              windowfirst = (windowfirst + 1) % WINDOWSIZE;
-          }
+                /* slide window over all leading ACKed */
+                while (acked[windowfirst]) {
+                    acked[windowfirst] = false;
+                    windowfirst = (windowfirst + 1) % WINDOWSIZE;
+                }
 
-          /* restart timer if still unacked */
-          stoptimer(A);
-          if (windowcount > 0)
-              starttimer(A, RTT);
-      } 
-      else {
-          if (TRACE > 0)
-              printf("----A: duplicate ACK received, do nothing!\n");
-      }
-  }
-} else {
-  if (TRACE > 0)
-      printf("----A: corrupted ACK is received, do nothing!\n");
-}
+                /* only restart timer if we just ACKed the oldest packet */
+                if (is_oldest) {
+                    stoptimer(A);
+                    if (windowcount > 0)
+                        starttimer(A, RTT);
+                }
+            }
+            else {
+                if (TRACE > 0)
+                    printf("----A: duplicate ACK received, do nothing!\n");
+            }
+        }
+    }
+    else {
+        if (TRACE > 0)
+            printf("----A: corrupted ACK is received, do nothing!\n");
+    }
 }
 
 /* called when A's timer goes off */
