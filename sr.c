@@ -140,8 +140,7 @@ void A_input(struct pkt packet)
 
                 /* slide window over all leading ACKed */
                 while (acked[windowfirst]) {
-                    acked[windowfirst] = false;
-                    windowfirst = (windowfirst + 1) % WINDOWSIZE;
+                  windowfirst = (windowfirst + 1) % WINDOWSIZE;
                 }
 
                 /* only restart timer if we just ACKed the oldest packet */
@@ -239,13 +238,14 @@ void B_input(struct pkt packet) {
 
       /* deliver in‐order packets */
       while (recvOK[0]) {
-          tolayer5(B, recvbuf[0].payload);
-          for (i = 0; i < WINDOWSIZE - 1; i++) {
-              recvbuf[i] = recvbuf[i+1];
-              recvOK[i]  = recvOK[i+1];
-          }
-          recvOK[WINDOWSIZE-1] = false;
-          recvbase = (recvbase + 1) % SEQSPACE;
+        tolayer5(B, recvbuf[0].payload);
+        recvOK[0] = false;
+        recvbase = (recvbase + 1) % SEQSPACE;
+        for (i = 0; i < WINDOWSIZE - 1; i++) {
+            recvbuf[i] = recvbuf[i+1];
+            recvOK[i]  = recvOK[i+1];
+        }
+        recvOK[WINDOWSIZE-1] = false;
       }
 
       sendpkt.acknum = packet.seqnum;
