@@ -135,22 +135,13 @@ void A_input(struct pkt packet)
                 idx  = (windowfirst + dist) % WINDOWSIZE;
                 if (!acked[idx]) {
                     acked[idx] = true;
-                    if (TRACE>0) printf("----A: ACK %d is not a duplicate\n", packet.acknum);
-                } else {
-                    if (TRACE>0) printf("----A: duplicate ACK received, do nothing!\n");
+                    windowcount--;
                 }
 
-                /* only for the oldest ACK do we slide—and free slots */
-                if (packet.acknum == seqfirst) {
-                    /* stop and restart timer around the slide */
-                    stoptimer(A);
-                    while (acked[windowfirst]) {
-                        acked[windowfirst] = false;
-                        windowfirst = (windowfirst + 1) % WINDOWSIZE;
-                        windowcount--;          /* free exactly one slot per slide */
-                    }
-                    if (windowcount > 0)
-                        starttimer(A, RTT);
+                /* slide window over all leading ACKed */
+                while (acked[windowfirst]) {
+                    acked[windowfirst] = false;
+                    windowfirst = (windowfirst + 1) % WINDOWSIZE;
                 }
 
                 /* only restart timer if we just ACKed the oldest packet */
