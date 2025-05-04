@@ -104,44 +104,59 @@ void A_output(struct msg message)
    In this practical this will always be an ACK as B never sends data.
 */
 void A_input(struct pkt packet) {
+  int seqfirst;
+  int dist;
+  int idx;
+  
+  /* Drop corrupted ACKs */
   if (IsCorrupted(packet)) {
-      if (TRACE>0) printf("----A: corrupted ACK is received, do nothing!\n");
+      if (TRACE > 0)
+          printf("----A: corrupted ACK is received, do nothing!\n");
       return;
   }
-  if (TRACE>0) printf("----A: uncorrupted ACK %d is received\n", packet.acknum);
 
-  /* compute seqnum of oldest outstanding */
-  int seqfirst = buffer[windowfirst].seqnum;
+  /* Count every uncorrupted ACK arrival */
+  total_ACKs_received++;
+  if (TRACE > 0)
+      printf("----A: uncorrupted ACK %d is received\n", packet.acknum);
 
-  /* check if ACK is in our current window */
-  int dist = (packet.acknum - seqfirst + SEQSPACE) % SEQSPACE;
-  if (dist < WINDOWSIZE) {
-      int idx = (windowfirst + dist) % WINDOWSIZE;
+  /* Only proceed if we have outstanding packets */
+  if (windowcount == 0)  
+      return;
 
-      if (!acked[idx]) {
-          /* new ACK for slot idx */
-          acked[idx] = true;
-          if (TRACE>0) printf("----A: ACK %d is not a duplicate\n", packet.acknum);
-      } else {
-          /* duplicate ACK */
-          if (TRACE>0) printf("----A: duplicate ACK received, do nothing!\n");
-      }
+  /* Figure out the sequence number of the oldest outstanding packet */
+  seqfirst = buffer[windowfirst].seqnum;
+ 
+  dist = (packet.acknum - seqfirst + SEQSPACE) % SEQSPACE;
+  if (dist >= WINDOWSIZE) {
+      if (TRACE > 0)
+          printf("----A: ACK %d outside window, ignoring\n", packet.acknum);
+      return;
+  }
 
-      /* if this was the oldest packet, we can now slide the window */
-      if (packet.acknum == seqfirst) {
-          stoptimer(A);
-          /* slide over *all* consecutively ACKed slots */
-          while (windowcount > 0 && acked[windowfirst]) {
-              acked[windowfirst] = false;
-              windowfirst = (windowfirst + 1) % WINDOWSIZE;
-              windowcount--;          /* free one slot per slide */
-          }
-          if (windowcount > 0)
-              starttimer(A, RTT);
-      }
+  /* Mark the slot “acked”  */
+  idx = (windowfirst + dist) % WINDOWSIZE;
+  if (!acked[idx]) {
+      acked[idx] = true;
+      new_ACKs++;
+      if (TRACE > 0)
+          printf("----A: ACK %d is not a duplicate\n", packet.acknum);
   } else {
-      /* ACK outside window—just ignore or log as duplicate */
-      if (TRACE>0) printf("----A: ACK %d outside window, ignoring\n", packet.acknum);
+      if (TRACE > 0)
+          printf("----A: duplicate ACK received, do nothing!\n");
+  }
+
+  /* If this was the oldest packet, slide the window */
+  if (packet.acknum == seqfirst) {
+      stoptimer(A);
+      /* advance past *all* consecutively ACKed slots */
+      while (windowcount > 0 && acked[windowfirst]) {
+          acked[windowfirst] = false;
+          windowfirst = (windowfirst + 1) % WINDOWSIZE;
+          windowcount--;        /* free exactly one slot per slot slid */
+      }
+      if (windowcount > 0)
+          starttimer(A, RTT);
   }
 }
 
