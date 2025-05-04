@@ -210,6 +210,7 @@ void B_input(struct pkt packet)
 {
   int dist;
   struct pkt sendpkt;
+  int i;
 
   /* Drop corrupted packets silently - pass Test 4 */
   if (IsCorrupted(packet)) {
@@ -237,7 +238,7 @@ void B_input(struct pkt packet)
   while (recvOK[0]) {
       tolayer5(B, recvbuf[0].payload);
       /* slide buffer + flags by one */
-      for (int i = 0; i < WINDOWSIZE - 1; i++) {
+      for (i = 0; i < WINDOWSIZE - 1; i++) {
           recvbuf[i] = recvbuf[i+1];
           recvOK[i]  = recvOK[i+1];
       }
@@ -251,7 +252,7 @@ void B_input(struct pkt packet)
 
   sendpkt.acknum = packet.seqnum;
 
-  for (int i = 0; i < 20; i++)
+  for (i = 0; i < 20; i++)
       sendpkt.payload[i] = 0;
 
   sendpkt.checksum = ComputeChecksum(sendpkt);
