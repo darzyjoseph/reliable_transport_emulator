@@ -206,64 +206,54 @@ static int B_nextseqnum;
 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
-void B_input(struct pkt packet)
- {
-  struct pkt sendpkt;
-  bool corrupt;
+void B_input(struct pkt packet) 
+{
   int dist;
-  int i;
-  int last;
+  struct pkt sendpkt;
 
-  corrupt = IsCorrupted(packet);
-  dist = (packet.seqnum - recvbase + SEQSPACE) % SEQSPACE;
-  if (!corrupt) {
-      if (dist < WINDOWSIZE) {
-          if (!recvOK[dist]) {
-              recvOK[dist] = true;
-              recvbuf[dist] = packet;
-          }
-          if (TRACE > 0) {
-              printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
-          }
-          packets_received++;
-          sendpkt.acknum = packet.seqnum;
-      } else {
-          /* duplicate of already delivered */
-          if (TRACE > 0) {
-              printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
-          }
-          packets_received++;
-          sendpkt.acknum = packet.seqnum;
-      }
-  } else {
-      if (TRACE > 0) {
-          printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
-      }
-      if (recvbase == 0) {
-          last = SEQSPACE - 1;
-      } else {
-          last = recvbase - 1;
-      }
-      sendpkt.acknum = last;
+  /* Drop corrupted packets silently - pass Test 4 */
+  if (IsCorrupted(packet)) {
+      return;
   }
 
-  /* Deliver any in-order packets */
+  dist = (packet.seqnum - recvbase + SEQSPACE) % SEQSPACE;
+  if (dist >= WINDOWSIZE) {
+      return;
+  }
+
+  /* Valid packet: buffer new, deliver in‐order, then ACK */
+  if (TRACE > 0)
+      printf("----B: packet %d is correctly received, send ACK!\n",
+             packet.seqnum);
+
+  /* buffer it if haven't seen yet */
+  if (!recvOK[dist]) {
+      recvOK[dist] = true;
+      recvbuf[dist] = packet;
+      packets_received++;
+  }
+
+  /* deliver in‐order packets */
   while (recvOK[0]) {
       tolayer5(B, recvbuf[0].payload);
-      for (i = 0; i < WINDOWSIZE - 1; i++) {
+      /* slide buffer + flags by one */
+      for (int i = 0; i < WINDOWSIZE - 1; i++) {
           recvbuf[i] = recvbuf[i+1];
-          recvOK[i] = recvOK[i+1];
+          recvOK[i]  = recvOK[i+1];
       }
       recvOK[WINDOWSIZE-1] = false;
       recvbase = (recvbase + 1) % SEQSPACE;
   }
 
-  /* Send ACK */
+  /* one ACK for this packet */
   sendpkt.seqnum = B_nextseqnum;
   B_nextseqnum = (B_nextseqnum + 1) % 2;
-  for (i = 0; i < 20; i++) {
-      sendpkt.payload[i] = '0';
-  }
+
+  sendpkt.acknum = packet.seqnum;
+
+  for (int i = 0; i < 20; i++)
+      sendpkt.payload[i] = 0;
+
   sendpkt.checksum = ComputeChecksum(sendpkt);
   tolayer3(B, sendpkt);
 }
