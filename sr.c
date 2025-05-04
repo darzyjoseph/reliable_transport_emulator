@@ -207,32 +207,36 @@ static int B_nextseqnum;
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet) {
-  /*--- declarations only ---*/
-  int dist, i, last;
-  bool corrupt;
+
+  int dist, i;
   struct pkt sendpkt;
-  
-  corrupt = IsCorrupted(packet);
+
+  /* silently drop any corrupted packet */
+  if (IsCorrupted(packet)) {
+      return;
+  }
+
+  /* compute offset from current window base */
   dist = (packet.seqnum - recvbase + SEQSPACE) % SEQSPACE;
 
-  if (!corrupt && dist < WINDOWSIZE) {
-      /* in‑window & uncorrupted: buffer if new, deliver, ack that seq */
+  if (dist < WINDOWSIZE) {
+      /* in‐window: buffer if new, deliver in‐order, then ACK this seq */
       if (TRACE > 0)
           printf("----B: packet %d is correctly received, send ACK!\n",
                  packet.seqnum);
 
       if (!recvOK[dist]) {
-          recvOK[dist] = true;
+          recvOK[dist]  = true;
           recvbuf[dist] = packet;
           packets_received++;
       }
 
-      /* deliver all now‑in‑order blocks */
+      /* deliver in‐order packets */
       while (recvOK[0]) {
           tolayer5(B, recvbuf[0].payload);
           for (i = 0; i < WINDOWSIZE - 1; i++) {
               recvbuf[i] = recvbuf[i+1];
-              recvOK[i] = recvOK[i+1];
+              recvOK[i]  = recvOK[i+1];
           }
           recvOK[WINDOWSIZE-1] = false;
           recvbase = (recvbase + 1) % SEQSPACE;
@@ -240,27 +244,18 @@ void B_input(struct pkt packet) {
 
       sendpkt.acknum = packet.seqnum;
   }
-  else if (!corrupt && dist >= WINDOWSIZE) {
-      /* duplicate of already‐delivered: still ACK that seq */
+  else {
+      /* duplicate/out‐of‐window: re‐ACK that same seq */
       if (TRACE > 0)
           printf("----B: packet %d is correctly received, send ACK!\n",
                  packet.seqnum);
-
       packets_received++;
       sendpkt.acknum = packet.seqnum;
-  }
-  else {
-      /* corrupted packet: re‑ACK the last in‑order seq (i.e. recvbase−1) */
-      if (TRACE > 0)
-          printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
-
-      last = (recvbase == 0 ? SEQSPACE-1 : recvbase - 1);
-      sendpkt.acknum = last;
   }
 
   /* build & send the ACK packet */
   sendpkt.seqnum = B_nextseqnum;
-  B_nextseqnum = (B_nextseqnum + 1) % 2;
+  B_nextseqnum   = (B_nextseqnum + 1) % 2;
   for (i = 0; i < 20; i++)
       sendpkt.payload[i] = 0;
   sendpkt.checksum = ComputeChecksum(sendpkt);
